@@ -1,0 +1,63 @@
+name: Build Amlogic Burn Image
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip dos2unix gzip
+
+    - name: Prepare burn directory
+      run: mkdir -p burn
+
+    - name: Unpack uboot.img
+      run: |
+        chmod +x ./AmlImg
+        ./AmlImg unpack ./uboot.img burn/
+
+    - name: Decompress OpenWrt image
+      run: |
+        gzip -d -c images/openwrt-amlogic.img.gz > openwrt-amlogic.img
+        ls -lh openwrt-amlogic.img
+        echo "DISKIMG=openwrt-amlogic.img" >> $GITHUB_ENV
+
+    - name: Extract boot and rootfs partitions 
+      run: | 
+        diskimg=openwrt-amlogic.img
+        loop=$(sudo losetup --find --show --partscan $diskimg) 
+        # 提取boot和rootfs分区并转换为.simg格式
+        sudo ./img2simg ${loop}p1 burn/boot.simg 
+        sudo ./img2simg ${loop}p2 burn/rootfs.simg 
+        sudo losetup -d $loop 
+        sudo chown $(id -u):$(id -g) -R burn/ 
+    - name: Generate burn image
+      run: |
+        echo -n "sha1sum $(sha1sum burn/boot.simg | awk '{print $1}')" >burn/boot.VERIFY
+        echo -n "sha1sum $(sha1sum burn/rootfs.simg | awk '{print $1}')" >burn/rootfs.VERIFY
+
+        cat <<EOF >>burn/commands.txt
+        PARTITION:boot:sparse:boot.simg
+        VERIFY:boot:normal:boot.VERIFY
+        PARTITION:rootfs:sparse:rootfs.simg
+        VERIFY:rootfs:normal:rootfs.VERIFY
+        EOF
+
+        prefix=openwrt-amlogic
+        burnimg=${prefix}.burn.img 
+        ./AmlImg pack $burnimg burn/ 
+
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-amlogic.burn.img
+        path: openwrt-amlogic.burn.img
