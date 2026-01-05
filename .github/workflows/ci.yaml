@@ -35,6 +35,7 @@ jobs:
         diskimg=openwrt-amlogic.img
         loop=$(sudo losetup --find --show --partscan $diskimg) 
         # 提取boot和rootfs分区并转换为.simg格式
+        chmod +x img2simg
         sudo ./img2simg ${loop}p1 burn/boot.simg 
         sudo ./img2simg ${loop}p2 burn/rootfs.simg 
         sudo losetup -d $loop 
